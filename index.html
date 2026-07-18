@@ -488,17 +488,17 @@
 
     <div class="field">
       <label>School Year</label>
-      <input type="text" id="schoolYear" value="2026-2027">
+      <input type="text" id="schoolYear" placeholder="e.g. 2026-2027">
     </div>
 
     <div class="field-row">
       <div class="field">
         <label>Grade Level</label>
-        <input type="text" id="gradeLevel" value="9">
+        <input type="text" id="gradeLevel" placeholder="e.g. 9">
       </div>
       <div class="field">
         <label>Default Section</label>
-        <input type="text" id="defaultSection" value="Banaba" placeholder="used if not found in paste">
+        <input type="text" id="defaultSection" placeholder="e.g. Banaba">
       </div>
     </div>
 
@@ -562,7 +562,7 @@
 
   <main class="main">
     <div class="toolbar">
-      <h2 id="mainTitle">Grade 9 — Banaba</h2>
+      <h2 id="mainTitle">Student ID Cards</h2>
       <div class="toolbar-actions">
         <button class="toolbar-btn flip" id="flipBtn">Show Backs</button>
         <button class="toolbar-btn" id="testPrintBtn">🧪 Test Print (first 8)</button>
@@ -837,8 +837,10 @@ function renderCards(){
   document.getElementById('countPill').textContent = students.length + ' student' + (students.length===1?'':'s') + ' loaded';
 
   const ctx = buildCtx();
+  const _sec = toTitleCase(ctx.defaultSection || (students[0] && students[0].section) || '');
+  const _gradePart = ctx.grade ? ('Grade ' + ctx.grade) : '';
   document.getElementById('mainTitle').textContent =
-    'Grade ' + ctx.grade + ' — ' + toTitleCase(ctx.defaultSection || (students[0] && students[0].section) || '');
+    [_gradePart, _sec].filter(Boolean).join(' — ') || 'Student ID Cards';
 
   students.forEach((st, idx) => {
     st._idx = idx;
