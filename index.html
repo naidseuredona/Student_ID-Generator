@@ -583,17 +583,16 @@
       <div class="toolbar-actions">
         <button class="toolbar-btn flip" id="flipBtn">Show Backs</button>
         <button class="toolbar-btn" id="testPrintBtn">🧪 Test Print (first 8)</button>
-        <button class="toolbar-btn" id="printBtn">🖨 Print / Save as PDF</button>
+        <button class="toolbar-btn" id="pdfBtn" style="background:linear-gradient(135deg,var(--sunset),var(--sunset-deep));color:#fff;border:none;font-weight:600;">⬇ Download Print-Ready PDF</button>
+        <button class="toolbar-btn" id="printBtn">🖨 Print</button>
       </div>
     </div>
     <div class="print-tip" id="printTip">
-      <strong>Before you print / save as PDF</strong>, set these in the print dialog so the IDs come out true size:
-      <span class="pt-list">
-        <span class="pt-item">Paper size: <b>Letter</b></span>
-        <span class="pt-item">Layout: <b>Landscape</b></span>
-        <span class="pt-item">Scale: <b>100% (Default)</b> — <u>not</u> “Fit to page”</span>
-        <span class="pt-item">Margins: <b>None</b> / <b>Default</b></span>
-        <span class="pt-item">Headers and footers: <b>Off</b></span>
+      <strong>To print at true size, use “⬇ Download Print-Ready PDF”.</strong>
+      It builds the file at exactly US&nbsp;Letter (11×8.5in), so the IDs come out correct no matter your printer settings — the browser’s own “Save as PDF” can silently use the wrong paper size (e.g. 13in wide), which shrinks the cards.
+      <span class="pt-list" style="margin-top:7px;">
+        <span class="pt-item"><b>1.</b> Click <b>Download Print-Ready PDF</b> → open the downloaded file.</span>
+        <span class="pt-item"><b>2.</b> Print it with Scale <b>100%</b> (or “Actual size”) and paper <b>Letter</b>.</span>
       </span>
     </div>
 
@@ -628,6 +627,7 @@
 <div id="printLayout"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <!-- file parsers (client-side, from CDN): SheetJS = csv/xlsx/xls, pdf.js = pdf, mammoth = docx -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -1227,6 +1227,87 @@ document.getElementById('printBtn').addEventListener('click', ()=>{
   buildPrintPages(false);
   window.print();
 });
+
+/* ---------------- Download Print-Ready PDF (locked to 11x8.5in Letter) ---------------- */
+async function downloadPrintReadyPDF(testOnly){
+  if(students.length===0){ alert('Generate some IDs first — paste your class list and click Generate IDs.'); return; }
+  const jsPDFctor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if(typeof html2canvas==='undefined' || !jsPDFctor){
+    alert('PDF builder didn\'t load (no internet?). Use the 🖨 Print button and set paper to Letter, scale 100%.');
+    return;
+  }
+  const btn=document.getElementById('pdfBtn'); const old=btn.textContent; btn.textContent='Building PDF…'; btn.disabled=true;
+
+  // Build the print pages, then render each to canvas at a fixed pixel size = 11x8.5in @ 96dpi * scale.
+  buildPrintPages(!!testOnly);
+  const PX_W=1056, PX_H=816;          // 11in x 8.5in at 96 CSS dpi
+  const SCALE=3;                       // render crispness (300+ dpi effective)
+  const layout=document.getElementById('printLayout');
+
+  // Make it renderable at exact pixel size, in the viewport (html2canvas can't capture
+  // elements pushed far off-screen). We capture each .print-page element directly, so
+  // surrounding UI isn't included in the image.
+  const prevStyle=layout.getAttribute('style')||'';
+  layout.style.cssText='display:block;position:fixed;left:0;top:0;z-index:5;background:#fff;';
+  const pages=[...layout.querySelectorAll('.print-page')];
+  pages.forEach(p=>{
+    p.style.width=PX_W+'px'; p.style.height=PX_H+'px';
+    p.style.pageBreakAfter='auto';
+  });
+  // force the inch-based grid to pixel equivalents so html2canvas captures true proportions
+  const styleTag=document.createElement('style');
+  styleTag.id='__pdfpxstyle';
+  styleTag.textContent=`
+    #printLayout{ display:block !important; position:fixed !important; left:0 !important; top:0 !important; z-index:5 !important; background:#fff !important; }
+    #printLayout .print-page{ width:1056px !important; height:816px !important;
+      box-sizing:border-box; padding:48px; display:grid !important;
+      grid-template-columns:repeat(4, 242.3px); grid-template-rows:repeat(2, 351.1px);
+      column-gap:8.4px; row-gap:0; justify-content:start; align-content:start;
+      background:#fff; overflow:hidden; }
+    #printLayout .print-page .print-grid{ display:contents !important; }
+    #printLayout .print-page .card{ width:242.3px !important; height:351.1px !important;
+      min-width:242.3px; max-width:242.3px; min-height:351.1px; max-height:351.1px;
+      position:relative; box-shadow:none !important; border-radius:0 !important;
+      background-size:100% 100% !important; background-repeat:no-repeat !important; overflow:hidden; }
+  `;
+  document.head.appendChild(styleTag);
+
+  // Wait for all card background images to actually load, or html2canvas captures blank.
+  await new Promise(res=>{
+    const urls=new Set();
+    pages.forEach(p=> p.querySelectorAll('.card').forEach(c=>{
+      const bg=getComputedStyle(c).backgroundImage;
+      const m=bg && bg.match(/url\(["']?(data:[^"')]+)["']?\)/);
+      if(m) urls.add(m[1]);
+    }));
+    let pending=urls.size;
+    if(!pending) return res();
+    urls.forEach(u=>{ const im=new Image(); im.onload=im.onerror=()=>{ if(--pending<=0) res(); }; im.src=u; });
+    setTimeout(res, 4000); // safety cap
+  });
+
+  try{
+    const pdf=new jsPDFctor({orientation:'landscape', unit:'in', format:'letter'}); // 11 x 8.5 exactly
+    for(let i=0;i<pages.length;i++){
+      const canvas=await html2canvas(pages[i], {scale:SCALE, useCORS:true, backgroundColor:'#ffffff', width:PX_W, height:PX_H, windowWidth:PX_W, windowHeight:PX_H});
+      const img=canvas.toDataURL('image/jpeg', 0.92);
+      if(i>0) pdf.addPage('letter','landscape');
+      pdf.addImage(img, 'JPEG', 0, 0, 11, 8.5);   // fill the whole Letter page, 1:1
+    }
+    const grade=(document.getElementById('gradeLevel').value.trim()||'');
+    pdf.save(`THS-IDs${grade?'-Grade'+grade:''}${testOnly?'-test':''}.pdf`);
+  }catch(e){
+    alert('Sorry, PDF build failed: '+e.message);
+  }finally{
+    // restore
+    document.getElementById('__pdfpxstyle')?.remove();
+    pages.forEach(p=>{ p.style.width=''; p.style.height=''; p.style.pageBreakAfter=''; });
+    layout.setAttribute('style', prevStyle);
+    if(!prevStyle) layout.removeAttribute('style');
+    btn.textContent=old; btn.disabled=false;
+  }
+}
+document.getElementById('pdfBtn').addEventListener('click', ()=> downloadPrintReadyPDF(false));
 
 document.getElementById('testPrintBtn').addEventListener('click', ()=>{
   if(students.length===0){
